@@ -1,216 +1,174 @@
-import random
+import random, zlib
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="Digimon Story: Time Stranger – Analytics", page_icon="🌀", layout="wide")
+st.set_page_config(page_title="Digimon Story: Time Stranger", page_icon="🌀", layout="wide")
 
-# ------------------------------------------------------------------ DATA
-# NOTA: los stats son valores de EJEMPLO para analitica; ajustalos con datos reales del juego.
-DIGIMON = pd.DataFrame([
-    # nombre, nivel, atributo, elemento, HP, ATK, DEF, INT, SPD
-    ("Agumon", "Rookie", "Vacuna", "Fuego", 70, 62, 48, 40, 55),
-    ("Gabumon", "Rookie", "Datos", "Hielo", 72, 58, 52, 45, 50),
-    ("Patamon", "Rookie", "Vacuna", "Viento", 60, 50, 45, 60, 58),
-    ("Gomamon", "Rookie", "Vacuna", "Agua", 68, 52, 50, 48, 54),
-    ("Impmon", "Rookie", "Virus", "Oscuridad", 58, 60, 40, 55, 66),
-    ("Greymon", "Champion", "Vacuna", "Fuego", 120, 105, 80, 60, 70),
-    ("Garurumon", "Champion", "Datos", "Hielo", 110, 98, 78, 66, 95),
-    ("Angemon", "Champion", "Vacuna", "Luz", 105, 95, 70, 85, 80),
-    ("Devimon", "Champion", "Virus", "Oscuridad", 115, 100, 75, 80, 65),
-    ("Metalgreymon", "Ultimate", "Vacuna", "Acero", 170, 150, 140, 90, 85),
-    ("Seraphimon", "Mega", "Vacuna", "Luz", 220, 190, 175, 200, 150),
-    ("Beelzemon", "Mega", "Virus", "Oscuridad", 215, 215, 150, 170, 190),
-    ("Omnimon", "Mega", "Vacuna", "Neutro", 260, 250, 220, 190, 185),
-    ("Lucemon", "Mega", "Virus", "Oscuridad", 240, 230, 190, 200, 170),
-    ("Susanoomon", "Mega", "Datos", "Luz", 280, 260, 230, 210, 200),
-], columns=["Digimon", "Nivel", "Atributo", "Elemento", "HP", "ATK", "DEF", "INT", "SPD"])
-DIGIMON["Poder total"] = DIGIMON[["HP", "ATK", "DEF", "INT", "SPD"]].sum(axis=1)
+# ============================== DATOS ==============================
+# Formato: Nombre|Nivel|Atributo|Elemento  (referencial: corrige lo que difiera del juego)
+RAW = """
+Botamon|Baby|Sin datos|Oscuridad;Punimon|Baby|Sin datos|Neutro;Poyomon|Baby|Sin datos|Luz;Nyaromon|Baby|Sin datos|Luz;Kuramon|Baby|Desconocido|Oscuridad;Pagumon|Baby|Virus|Oscuridad;Yuramon|Baby|Sin datos|Planta;Pichimon|Baby|Sin datos|Agua
+Agumon|Rookie|Vacuna|Fuego;Gabumon|Rookie|Datos|Hielo;Biyomon|Rookie|Vacuna|Viento;Palmon|Rookie|Datos|Planta;Tentomon|Rookie|Vacuna|Electrico;Gomamon|Rookie|Datos|Agua;Patamon|Rookie|Datos|Viento;Salamon|Rookie|Vacuna|Neutro;Guilmon|Rookie|Virus|Fuego;Terriermon|Rookie|Vacuna|Viento;Renamon|Rookie|Datos|Neutro;Veemon|Rookie|Libre|Neutro;Hawkmon|Rookie|Vacuna|Viento;Armadillomon|Rookie|Datos|Tierra;Impmon|Rookie|Virus|Oscuridad;Betamon|Rookie|Virus|Agua;Elecmon|Rookie|Datos|Electrico;Gazimon|Rookie|Virus|Tierra;Hagurumon|Rookie|Virus|Acero;DemiDevimon|Rookie|Virus|Oscuridad;Goburimon|Rookie|Virus|Tierra;Kunemon|Rookie|Virus|Planta;Shoutmon|Rookie|Variable|Fuego;Hudiemon|Rookie|Desconocido|Viento;Dorumon|Rookie|Datos|Fuego;Lucemon|Rookie|Libre|Luz
+Greymon|Champion|Vacuna|Fuego;Garurumon|Champion|Vacuna|Hielo;Birdramon|Champion|Libre|Fuego;Togemon|Champion|Datos|Planta;Kabuterimon|Champion|Vacuna|Electrico;Ikkakumon|Champion|Datos|Agua;Angemon|Champion|Vacuna|Luz;Devimon|Champion|Virus|Oscuridad;Gatomon|Champion|Vacuna|Luz;Airdramon|Champion|Datos|Viento;Leomon|Champion|Vacuna|Fuego;Meramon|Champion|Datos|Fuego;Seadramon|Champion|Datos|Agua;Numemon|Champion|Virus|Tierra;Ogremon|Champion|Virus|Tierra;Growlmon|Champion|Virus|Fuego;Kyubimon|Champion|Datos|Fuego;Wizardmon|Champion|Datos|Oscuridad;Flamedramon|Champion|Libre|Fuego;Ankylomon|Champion|Vacuna|Tierra;Mojyamon|Champion|Datos|Hielo;Frigimon|Champion|Vacuna|Hielo;Monochromon|Champion|Datos|Fuego;Tyrannomon|Champion|Datos|Fuego;Shellmon|Champion|Datos|Agua;Andromon|Champion|Vacuna|Acero;Gargomon|Champion|Vacuna|Viento;Exveemon|Champion|Vacuna|Viento;Stingmon|Champion|Virus|Viento;Dobermon|Champion|Virus|Oscuridad;Sorcerymon|Champion|Datos|Oscuridad
+MetalGreymon|Ultimate|Virus|Acero;WereGarurumon|Ultimate|Vacuna|Hielo;Garudamon|Ultimate|Vacuna|Fuego;Lillymon|Ultimate|Datos|Planta;MegaKabuterimon|Ultimate|Vacuna|Electrico;Zudomon|Ultimate|Datos|Agua;Angewomon|Ultimate|Vacuna|Luz;SkullGreymon|Ultimate|Virus|Oscuridad;MetalMamemon|Ultimate|Datos|Acero;Myotismon|Ultimate|Virus|Oscuridad;Cherrymon|Ultimate|Virus|Planta;Etemon|Ultimate|Virus|Oscuridad;Rapidmon|Ultimate|Vacuna|Acero;Taomon|Ultimate|Datos|Neutro;MarineAngemon|Ultimate|Vacuna|Agua;WarGrowlmon|Ultimate|Vacuna|Fuego;MegaSeadramon|Ultimate|Datos|Agua;Silphymon|Ultimate|Vacuna|Viento;Cyberdramon|Ultimate|Virus|Acero;Knightmon|Ultimate|Datos|Acero;Shakkoumon|Ultimate|Vacuna|Acero;Okuwamon|Ultimate|Virus|Planta;Rosemon|Ultimate|Datos|Planta;Phantomon|Ultimate|Virus|Oscuridad;Mamemon|Ultimate|Datos|Neutro;Vikaralamon|Ultimate|Datos|Tierra;Mihiramon|Ultimate|Datos|Tierra;Sandiramon|Ultimate|Datos|Tierra
+Omnimon|Mega|Vacuna|Neutro;WarGreymon|Mega|Vacuna|Fuego;MetalGarurumon|Mega|Datos|Hielo;Seraphimon|Mega|Vacuna|Luz;Ophanimon|Mega|Vacuna|Luz;Cherubimon|Mega|Vacuna|Luz;Lucemon Satan|Mega|Virus|Oscuridad;Leviamon|Mega|Virus|Agua;Lilithmon|Mega|Virus|Oscuridad;Barbamon|Mega|Datos|Oscuridad;Beelzemon|Mega|Virus|Oscuridad;Belphemon|Mega|Virus|Oscuridad;Daemon|Mega|Virus|Oscuridad;Gallantmon|Mega|Vacuna|Fuego;Alphamon|Mega|Virus|Oscuridad;Craniamon|Mega|Datos|Tierra;Dynasmon|Mega|Datos|Viento;Examon|Mega|Vacuna|Fuego;Gankoomon|Mega|Datos|Neutro;Jesmon|Mega|Vacuna|Luz;Magnamon|Mega|Vacuna|Acero;Sleipmon|Mega|Datos|Viento;UlforceVeedramon|Mega|Vacuna|Luz;Duftmon|Mega|Vacuna|Luz;Susanoomon|Mega|Libre|Luz;Apocalymon|Mega|Virus|Oscuridad;Millenniummon|Mega|Virus|Oscuridad;Imperialdramon|Mega|Vacuna|Neutro;MegaGargomon|Mega|Vacuna|Acero;Machinedramon|Mega|Virus|Acero;Piedmon|Mega|Virus|Oscuridad;Puppetmon|Mega|Virus|Planta;AncientGreymon|Mega|Libre|Fuego;Ouryumon|Mega|Variable|Fuego;Chaosmon|Mega|Variable|Oscuridad;Azulongmon|Mega|Libre|Viento;Zhuqiaomon|Mega|Libre|Fuego;Baihumon|Mega|Libre|Electrico;Ebonwumon|Mega|Libre|Tierra;Armageddemon|Mega|Desconocido|Oscuridad;Dagomon|Mega|Sin datos|Agua
+"""
+rows = [r.split("|") for r in RAW.replace("\n", ";").split(";") if r.strip()]
+df = pd.DataFrame(rows, columns=["Digimon", "Nivel", "Atributo", "Elemento"])
+LEVELS = ["Baby", "Rookie", "Champion", "Ultimate", "Mega"]
+ATTRS = ["Vacuna", "Datos", "Virus", "Libre", "Variable", "Desconocido", "Sin datos"]
+COLORS = {"Vacuna": "#3b82f6", "Datos": "#22c55e", "Virus": "#a855f7", "Libre": "#f59e0b",
+          "Variable": "#ec4899", "Desconocido": "#94a3b8", "Sin datos": "#475569"}
+BASE = {"Baby": 20, "Rookie": 60, "Champion": 110, "Ultimate": 170, "Mega": 240}
 
-COLORS = {"Vacuna": "#3b82f6", "Datos": "#22c55e", "Virus": "#a855f7", "Libre": "#f59e0b", "Variable": "#ec4899", "Desconocido": "#94a3b8"}
+# Stats ESTIMADOS (simulados y reproducibles por nombre), no son los del juego.
+def mk_stats(r):
+    g = random.Random(zlib.crc32(r.Digimon.encode())); b = BASE[r.Nivel]
+    return pd.Series({s: int(b * g.uniform(0.7, 1.3) * m) for s, m in
+                      zip(["HP", "ATK", "DEF", "INT", "SPD"], [1.2, 1, 0.9, 0.9, 0.9])})
+df = pd.concat([df, df.apply(mk_stats, axis=1)], axis=1)
+STATS = ["HP", "ATK", "DEF", "INT", "SPD"]
+df["Poder"] = df[STATS].sum(axis=1)
+df["Nivel"] = pd.Categorical(df["Nivel"], LEVELS, ordered=True)
+TRI = {"Vacuna": "Virus", "Virus": "Datos", "Datos": "Vacuna"}
 
-ATTRIBUTES = {
-    "Vacuna": ("🛡️", "Fuerte contra Virus, debil contra Datos. Suelen ser Digimon de orden y proteccion."),
-    "Datos": ("💾", "Fuerte contra Vacuna, debil contra Virus. Equilibrados y adaptables."),
-    "Virus": ("☣️", "Fuerte contra Datos, debil contra Vacuna. Agresivos e impredecibles."),
-    "Libre": ("🕊️", "Sin ventaja ni desventaja fija en el triangulo. Muy versatiles."),
-    "Variable": ("🔀", "Atributo que cambia o se adapta; casos especiales de evolucion."),
-    "Desconocido": ("❓", "Sin clasificar o de naturaleza misteriosa."),
-}
-
-CRESTS = pd.DataFrame([
-    ("Valor", "Agumon", "🔥"), ("Amistad", "Gabumon", "🤝"), ("Amor", "Biyomon", "❤️"),
-    ("Sinceridad", "Palmon", "🌿"), ("Conocimiento", "Tentomon", "📚"),
-    ("Fiabilidad", "Gomamon", "⚓"), ("Esperanza", "Patamon", "🌟"), ("Luz", "Gatomon", "✨"),
-], columns=["Emblema", "Digimon asociado", "Icono"])
-
-ROYAL_KNIGHTS = ["Omnimon", "Gallantmon (Dukemon)", "Alphamon", "Craniamon", "Dynasmon", "Examon", "Gankoomon",
-                 "Jesmon", "Magnamon", "Sleipmon", "UlforceVeedramon", "Duftmon", "Leopardmon"]
-DEVAS = ["Vikaralamon", "Mihiramon", "Pajiramon", "Kumbhiramon", "Majiramon", "Indramon",
-         "Sandiramon", "Antylamon", "Caturamon", "Vajramon", "Makuramon", "Pagumon/otro (varia segun fuente)"]
-ANGELS = ["Seraphimon", "Ophanimon", "Cherubimon"]
-DEMONS = ["Lucemon", "Leviamon", "Lilithmon", "Barbamon", "Beelzemon", "Belphemon", "Daemon"]
-TITANS = ["Titamon", "Atlas (referencia mitologica)", "Olympos XII (Apollomon, Dianamon, Marsmon, Junomon...)"]
-SOVEREIGNS = ["Azulongmon (Este)", "Zhuqiaomon (Sur)", "Baihumon (Oeste)", "Ebonwumon (Norte)"]
-
-COMPUTERS = {
-    "Homeos": ("🧠", "Primera computadora central; nucleo de control del equilibrio."),
-    "Yggdrasil": ("🌳", "Supercomputadora que administra el Mundo Digital y su evolucion."),
-    "Kunlun": ("🏔️", "Tercera computadora central, asociada al orden de la red."),
-}
-
-TYPE_MATCHUP = {"Vacuna": "Virus", "Virus": "Datos", "Datos": "Vacuna"}
-
-# ------------------------------------------------------------------ SIDEBAR
+# ============================== MENU ==============================
 st.sidebar.title("🌀 Digimon Story\nTime Stranger")
-page = st.sidebar.radio("Menu", [
-    "🏠 Inicio", "⚔️ Atributos", "📊 Analitica", "🥚 Digitama / Tamagotchi",
-    "🖥️ Computadoras centrales", "👑 Caballeros, Devas y Soberanos",
-    "😇😈 Angeles, Demonios y Titanes", "💎 Emblemas", "🌌 Susanoomon"])
-st.sidebar.caption("Datos de stats = ejemplo. Lore basado en el canon de la franquicia.")
+page = st.sidebar.radio("Menu", ["🏠 Inicio", "⚔️ Atributos", "📊 Analitica avanzada", "📜 Historia"])
+st.sidebar.caption(f"{len(df)} Digimon cargados. Stats = estimados para analitica; atributo/elemento referenciales.")
 
-# ------------------------------------------------------------------ PAGES
+# ============================== INICIO ==============================
 if page == "🏠 Inicio":
-    st.title("🌀 Digimon Story: Time Stranger — Panel de Analitica")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Digimon cargados", len(DIGIMON))
-    c2.metric("Atributos", DIGIMON["Atributo"].nunique())
-    c3.metric("Poder promedio", int(DIGIMON["Poder total"].mean()))
-    c4.metric("Mas fuerte", DIGIMON.loc[DIGIMON["Poder total"].idxmax(), "Digimon"])
-    st.write("Usa el menu lateral para explorar atributos, estadisticas, el Tamagotchi, las computadoras "
-             "centrales y las grandes jerarquias del Mundo Digital.")
-    fig = px.sunburst(DIGIMON, path=["Atributo", "Nivel", "Digimon"], values="Poder total",
-                      color="Atributo", color_discrete_map=COLORS)
-    st.plotly_chart(fig, use_container_width=True)
-
-elif page == "⚔️ Atributos":
-    st.title("⚔️ Tipos / Atributos")
-    tabs = st.tabs([f"{ATTRIBUTES[a][0]} {a}" for a in ATTRIBUTES])
-    for tab, (name, (icon, desc)) in zip(tabs, ATTRIBUTES.items()):
-        with tab:
-            st.subheader(f"{icon} {name}")
-            st.write(desc)
-            sub = DIGIMON[DIGIMON["Atributo"] == name]
-            if sub.empty:
-                st.info("Sin Digimon de ejemplo cargados para este atributo.")
-            else:
-                st.dataframe(sub, use_container_width=True, hide_index=True)
-    st.markdown("**Triangulo:** Vacuna ➜ Virus ➜ Datos ➜ Vacuna (cada uno vence al siguiente).")
-
-elif page == "📊 Analitica":
-    st.title("📊 Analitica avanzada")
-    f1, f2 = st.columns(2)
-    attrs = f1.multiselect("Atributo", DIGIMON["Atributo"].unique(), default=list(DIGIMON["Atributo"].unique()))
-    levels = f2.multiselect("Nivel", DIGIMON["Nivel"].unique(), default=list(DIGIMON["Nivel"].unique()))
-    df = DIGIMON[DIGIMON["Atributo"].isin(attrs) & DIGIMON["Nivel"].isin(levels)]
-    if df.empty:
-        st.warning("Sin datos con esos filtros.")
-        st.stop()
-
-    t1, t2, t3, t4 = st.tabs(["Dispersion", "Radar", "Heatmap", "Simulador de batalla"])
-    with t1:
-        x, y = st.columns(2)
-        xs = x.selectbox("Eje X", ["HP", "ATK", "DEF", "INT", "SPD"], index=1)
-        ys = y.selectbox("Eje Y", ["HP", "ATK", "DEF", "INT", "SPD"], index=4)
-        st.plotly_chart(px.scatter(df, x=xs, y=ys, size="Poder total", color="Atributo", text="Digimon",
-                                   color_discrete_map=COLORS, hover_data=["Nivel", "Elemento"]),
+    st.title("🌀 Digimon Story: Time Stranger")
+    st.caption("Panel de exploracion y analitica del Mundo Digital")
+    k = st.columns(5)
+    k[0].metric("Digimon", len(df)); k[1].metric("Atributos", df.Atributo.nunique())
+    k[2].metric("Elementos", df.Elemento.nunique()); k[3].metric("Poder medio", int(df.Poder.mean()))
+    k[4].metric("Mas poderoso", df.loc[df.Poder.idxmax(), "Digimon"])
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.plotly_chart(px.sunburst(df, path=["Atributo", "Nivel", "Digimon"], values="Poder", color="Atributo",
+                                    color_discrete_map=COLORS, title="Jerarquia Atributo > Nivel > Digimon"),
                         use_container_width=True)
-    with t2:
-        picks = st.multiselect("Compara Digimon", df["Digimon"], default=list(df["Digimon"][:3]))
-        cats = ["HP", "ATK", "DEF", "INT", "SPD"]
+    with c2:
+        cnt = df.Atributo.value_counts().reindex(ATTRS).reset_index()
+        cnt.columns = ["Atributo", "Cantidad"]
+        st.plotly_chart(px.bar(cnt, x="Atributo", y="Cantidad", color="Atributo", color_discrete_map=COLORS,
+                               text="Cantidad", title="Digimon por atributo"), use_container_width=True)
+    c3, c4 = st.columns(2)
+    c3.plotly_chart(px.treemap(df, path=["Elemento", "Atributo"], color="Elemento", title="Elementos"),
+                    use_container_width=True)
+    top = df.nlargest(10, "Poder")[["Digimon", "Nivel", "Atributo", "Elemento", "Poder"]]
+    c4.subheader("🏆 Top 10 por poder"); c4.dataframe(top, hide_index=True, use_container_width=True)
+    st.subheader("🎲 Digimon al azar")
+    if st.button("Sacar otro") or "spot" not in st.session_state:
+        st.session_state.spot = df.sample(1).iloc[0]
+    s = st.session_state.spot
+    st.info(f"**{s.Digimon}** — {s.Nivel} · {s.Atributo} · {s.Elemento} · Poder estimado {s.Poder}")
+
+# ============================== ATRIBUTOS ==============================
+elif page == "⚔️ Atributos":
+    st.title("⚔️ Explorador de Digimon")
+    cols = st.columns(len(ATTRS))
+    for c, a in zip(cols, ATTRS):
+        c.metric(a, int((df.Atributo == a).sum()))
+    f = st.columns(4)
+    q = f[0].text_input("🔎 Nombre")
+    fa = f[1].multiselect("Atributo", ATTRS)
+    fe = f[2].multiselect("Elemento", sorted(df.Elemento.unique()))
+    fn = f[3].multiselect("Nivel", LEVELS)
+    v = df.copy()
+    if q: v = v[v.Digimon.str.contains(q, case=False)]
+    if fa: v = v[v.Atributo.isin(fa)]
+    if fe: v = v[v.Elemento.isin(fe)]
+    if fn: v = v[v.Nivel.isin(fn)]
+    st.write(f"**{len(v)}** resultados")
+    st.dataframe(v.sort_values(["Nivel", "Digimon"]), hide_index=True, use_container_width=True, height=480,
+                 column_config={"Poder": st.column_config.ProgressColumn("Poder", min_value=0, max_value=int(df.Poder.max()))})
+    st.download_button("⬇️ Descargar CSV", v.to_csv(index=False).encode(), "digimon.csv")
+    st.markdown("**Triangulo:** Vacuna ➜ Virus ➜ Datos ➜ Vacuna. Libre, Variable, Desconocido y Sin datos quedan fuera del triangulo.")
+    if len(v):
+        st.plotly_chart(px.histogram(v, x="Nivel", color="Atributo", barmode="group", color_discrete_map=COLORS,
+                                     category_orders={"Nivel": LEVELS}), use_container_width=True)
+
+# ============================== ANALITICA ==============================
+elif page == "📊 Analitica avanzada":
+    st.title("📊 Analitica avanzada")
+    fa = st.multiselect("Filtrar atributos", ATTRS, default=ATTRS)
+    d = df[df.Atributo.isin(fa)]
+    if d.empty: st.warning("Sin datos."); st.stop()
+    t = st.tabs(["Distribuciones", "Correlacion y PCA", "Clusters", "Comparador", "Rankings", "Simulador"])
+    with t[0]:
+        m = st.selectbox("Estadistica", STATS + ["Poder"], index=5)
+        st.plotly_chart(px.box(d, x="Nivel", y=m, color="Atributo", color_discrete_map=COLORS,
+                               category_orders={"Nivel": LEVELS}), use_container_width=True)
+        st.plotly_chart(px.violin(d, x="Elemento", y=m, color="Elemento", box=True), use_container_width=True)
+        piv = d.pivot_table(index="Elemento", columns="Atributo", values=m, aggfunc="mean")
+        st.plotly_chart(px.imshow(piv, text_auto=".0f", aspect="auto", color_continuous_scale="Viridis",
+                                  title=f"Media de {m}: Elemento x Atributo"), use_container_width=True)
+    with t[1]:
+        st.plotly_chart(px.imshow(d[STATS].corr(), text_auto=".2f", color_continuous_scale="RdBu_r",
+                                  zmin=-1, zmax=1, title="Correlacion de stats"), use_container_width=True)
+        X = (d[STATS] - d[STATS].mean()) / d[STATS].std()
+        U, S, Vt = np.linalg.svd(X.values, full_matrices=False)
+        p = pd.DataFrame(U[:, :2] * S[:2], columns=["PC1", "PC2"], index=d.index).join(d[["Digimon", "Atributo", "Nivel"]])
+        st.plotly_chart(px.scatter(p, x="PC1", y="PC2", color="Atributo", symbol="Nivel", hover_name="Digimon",
+                                   color_discrete_map=COLORS, title="PCA de stats"), use_container_width=True)
+        st.caption(f"Varianza explicada PC1+PC2: {(S[:2]**2).sum()/(S**2).sum():.0%}")
+    with t[2]:
+        k = st.slider("Numero de clusters (K-Means)", 2, 8, 4)
+        X = ((d[STATS] - d[STATS].mean()) / d[STATS].std()).values
+        rng = np.random.default_rng(0); C = X[rng.choice(len(X), min(k, len(X)), replace=False)]
+        for _ in range(50):
+            lab = ((X[:, None] - C[None]) ** 2).sum(2).argmin(1)
+            C = np.array([X[lab == i].mean(0) if (lab == i).any() else C[i] for i in range(len(C))])
+        cl = d.assign(Cluster=lab.astype(str))
+        st.plotly_chart(px.scatter(cl, x="ATK", y="SPD", size="Poder", color="Cluster", hover_name="Digimon"),
+                        use_container_width=True)
+        st.dataframe(cl.groupby("Cluster")[STATS + ["Poder"]].mean().round(0), use_container_width=True)
+    with t[3]:
+        pk = st.multiselect("Digimon a comparar", d.Digimon, default=list(d.nlargest(3, "Poder").Digimon))
         fig = go.Figure()
-        for n in picks:
-            r = df[df["Digimon"] == n].iloc[0]
-            fig.add_trace(go.Scatterpolar(r=[r[c] for c in cats] + [r[cats[0]]], theta=cats + [cats[0]],
+        for n in pk:
+            r = d[d.Digimon == n].iloc[0]
+            fig.add_trace(go.Scatterpolar(r=[r[s] for s in STATS] + [r[STATS[0]]], theta=STATS + [STATS[0]],
                                           fill="toself", name=n))
         st.plotly_chart(fig, use_container_width=True)
-    with t3:
-        piv = df.groupby(["Atributo", "Nivel"])["Poder total"].mean().unstack().fillna(0)
-        st.plotly_chart(px.imshow(piv, text_auto=".0f", color_continuous_scale="Viridis", aspect="auto"),
-                        use_container_width=True)
-    with t4:
+    with t[4]:
+        r = st.selectbox("Ranking por", STATS + ["Poder"], index=5, key="rk")
+        n = st.slider("Cuantos mostrar", 5, 30, 15)
+        st.plotly_chart(px.bar(d.nlargest(n, r).sort_values(r), x=r, y="Digimon", orientation="h", color="Atributo",
+                               color_discrete_map=COLORS, height=500), use_container_width=True)
+        st.dataframe(d.groupby("Atributo")[STATS + ["Poder"]].mean().round(0), use_container_width=True)
+    with t[5]:
         a, b = st.columns(2)
-        d1 = a.selectbox("Digimon A", DIGIMON["Digimon"], index=0)
-        d2 = b.selectbox("Digimon B", DIGIMON["Digimon"], index=11)
-        if st.button("⚔️ Simular 1000 combates"):
-            A = DIGIMON[DIGIMON["Digimon"] == d1].iloc[0]
-            B = DIGIMON[DIGIMON["Digimon"] == d2].iloc[0]
-            def mult(x, y):
-                return 1.25 if TYPE_MATCHUP.get(x) == y else 0.8 if TYPE_MATCHUP.get(y) == x else 1.0
-            pa = A["Poder total"] * mult(A["Atributo"], B["Atributo"])
-            pb = B["Poder total"] * mult(B["Atributo"], A["Atributo"])
-            wins = sum(random.gauss(pa, 40) > random.gauss(pb, 40) for _ in range(1000))
-            st.metric(f"Victorias de {d1}", f"{wins/10:.1f}%")
-            st.metric(f"Victorias de {d2}", f"{(1000-wins)/10:.1f}%")
-            st.caption("Modelo simple: poder total x ventaja de atributo + ruido aleatorio.")
+        d1 = a.selectbox("Digimon A", df.Digimon, index=int(df.index[df.Digimon == "Omnimon"][0]))
+        d2 = b.selectbox("Digimon B", df.Digimon, index=int(df.index[df.Digimon == "Beelzemon"][0]))
+        if st.button("⚔️ Simular 2000 combates"):
+            A, B = (df[df.Digimon == x].iloc[0] for x in (d1, d2))
+            mu = lambda x, y: 1.25 if TRI.get(x) == y else 0.8 if TRI.get(y) == x else 1.0
+            pa, pb = A.Poder * mu(A.Atributo, B.Atributo), B.Poder * mu(B.Atributo, A.Atributo)
+            w = np.mean(np.random.normal(pa, 40, 2000) > np.random.normal(pb, 40, 2000))
+            st.metric(f"Victoria de {d1}", f"{w:.1%}"); st.metric(f"Victoria de {d2}", f"{1-w:.1%}")
+            st.caption("Poder estimado x ventaja de triangulo (x1.25 / x0.8) + ruido.")
 
-elif page == "🥚 Digitama / Tamagotchi":
-    st.title("🥚 Crianza digital (estilo Tamagotchi)")
-    ss = st.session_state
-    ss.setdefault("pet", {"Hambre": 50, "Felicidad": 50, "Energia": 50, "Disciplina": 50, "Edad": 0})
-    ss.setdefault("log", [])
-    pet = ss.pet
-    stage = ["Digitama 🥚", "Baby 🐣", "Rookie 🦖", "Champion 🐉", "Ultimate 🔥", "Mega 👑"][min(pet["Edad"] // 3, 5)]
-    st.subheader(f"Etapa: {stage}")
-    cols = st.columns(4)
-    for c, k in zip(cols, ["Hambre", "Felicidad", "Energia", "Disciplina"]):
-        c.write(k)
-        c.progress(max(0, min(100, pet[k])) / 100)
-    actions = {"🍖 Alimentar": {"Hambre": -20, "Felicidad": 5}, "🎮 Jugar": {"Felicidad": 15, "Energia": -15, "Hambre": 10},
-               "😴 Dormir": {"Energia": 25, "Hambre": 5}, "📚 Entrenar": {"Disciplina": 15, "Energia": -15, "Hambre": 10}}
-    bc = st.columns(4)
-    for col, (label, eff) in zip(bc, actions.items()):
-        if col.button(label, use_container_width=True):
-            for k, v in eff.items():
-                pet[k] = max(0, min(100, pet[k] + v))
-            pet["Edad"] += 1
-            ss.log.append({"Turno": pet["Edad"], "Accion": label, **{k: pet[k] for k in ["Hambre", "Felicidad", "Energia", "Disciplina"]}})
-            st.rerun()
-    if st.button("🔄 Reiniciar"):
-        del ss["pet"], ss["log"]
-        st.rerun()
-    if ss.log:
-        st.plotly_chart(px.line(pd.DataFrame(ss.log), x="Turno", y=["Hambre", "Felicidad", "Energia", "Disciplina"]),
-                        use_container_width=True)
-
-elif page == "🖥️ Computadoras centrales":
-    st.title("🖥️ Las 3 computadoras centrales")
-    st.write("Segun tu planteamiento, estan dominadas por la red de **Homeostasis**, el sistema que mantiene el equilibrio del Mundo Digital.")
-    for col, (n, (ic, d)) in zip(st.columns(3), COMPUTERS.items()):
-        with col:
-            st.markdown(f"### {ic} {n}")
-            st.write(d)
-    fig = go.Figure(go.Sankey(
-        node=dict(label=["Homeostasis", "Homeos", "Yggdrasil", "Kunlun", "Mundo Digital"], pad=20),
-        link=dict(source=[0, 0, 0, 1, 2, 3], target=[1, 2, 3, 4, 4, 4], value=[1, 1, 1, 1, 1, 1])))
-    st.plotly_chart(fig, use_container_width=True)
-    st.caption("Los roles exactos dentro del juego conviene verificarlos; edita las descripciones en COMPUTERS.")
-
-elif page == "👑 Caballeros, Devas y Soberanos":
-    st.title("👑 Jerarquias del Mundo Digital")
-    t1, t2, t3 = st.tabs(["Caballeros Reales", "12 Devas (Shinsho)", "Cuatro Soberanos"])
-    t1.write(" • ".join(ROYAL_KNIGHTS)); t1.caption("La lista varia segun la fuente (son 13 o mas).")
-    t2.write(" • ".join(DEVAS)); t2.caption("Lista orientativa; revisa la 12ª segun la fuente.")
-    t3.write(" • ".join(SOVEREIGNS))
-
-elif page == "😇😈 Angeles, Demonios y Titanes":
-    st.title("Angeles, Demonios y Titanes")
-    c1, c2, c3 = st.columns(3)
-    c1.subheader("😇 3 Grandes Angeles"); c1.write("\n".join(f"- {x}" for x in ANGELS))
-    c2.subheader("😈 7 Grandes Demonios"); c2.write("\n".join(f"- {x}" for x in DEMONS))
-    c3.subheader("🗿 Titanes"); c3.write("\n".join(f"- {x}" for x in TITANS))
-    st.plotly_chart(px.pie(names=["Angeles (3)", "Demonios (7)"], values=[3, 7],
-                           color_discrete_sequence=["#fde047", "#7c3aed"]), use_container_width=True)
-
-elif page == "💎 Emblemas":
-    st.title("💎 Los 8 emblemas")
-    st.dataframe(CRESTS, use_container_width=True, hide_index=True)
-    st.plotly_chart(px.pie(CRESTS, names="Emblema", hole=0.5), use_container_width=True)
-
-elif page == "🌌 Susanoomon":
-    st.title("🌌 Susanoomon")
-    st.write("Fusion legendaria de los 10 Guerreros Legendarios (Digimon Frontier), "
-             "una de las existencias mas poderosas de la franquicia.")
-    st.plotly_chart(px.bar(DIGIMON.sort_values("Poder total"), x="Poder total", y="Digimon", orientation="h",
-                           color="Atributo", color_discrete_map=COLORS), use_container_width=True)
+# ============================== HISTORIA ==============================
+else:
+    st.title("📜 Historia del Mundo Digital")
+    st.caption("Descripciones basadas en el canon de la franquicia; su rol exacto en Time Stranger conviene verificarlo en el juego.")
+    H = {
+     "🖥️ Las 3 computadoras centrales": "Homeos, Yggdrasil y Kunlun son los tres nucleos que sostienen el Mundo Digital. **Yggdrasil** administra el orden y la evolucion de los Digimon; **Homeos** y **Kunlun** completan la red de control. Todo esto se mueve bajo **Homeostasis**, el sistema que busca mantener el equilibrio y corregir cualquier amenaza a la estabilidad del mundo.",
+     "👑 Caballeros Reales (Royal Knights)": "Elite guardiana de Yggdrasil: Omnimon, Gallantmon, Alphamon, Craniamon, Dynasmon, Examon, Gankoomon, Jesmon, Magnamon, Sleipmon, UlforceVeedramon, Duftmon, Leopardmon y otros segun la fuente. Actuan como fuerza ejecutora que protege el orden digital.",
+     "🐲 Los 12 Devas": "Doce generales divinos inspirados en los guardianes budistas y el zodiaco: Vikaralamon, Mihiramon, Pajiramon, Kumbhiramon, Majiramon, Indramon, Sandiramon, Antylamon, Caturamon, Vajramon, Makuramon y otro segun la fuente. Sirven a los Cuatro Soberanos como guardianes.",
+     "🐉 Los 4 Soberanos": "Azulongmon (Este), Zhuqiaomon (Sur), Baihumon (Oeste) y Ebonwumon (Norte): bestias sagradas que vigilan cada region cardinal y mantienen el equilibrio del Mundo Digital desde su territorio.",
+     "😇 Los 3 Grandes Angeles": "Seraphimon, Ophanimon y Cherubimon: Digimon de luz y justicia, considerados guardianes celestiales y simbolo del bien. Cherubimon tambien tiene una version corrupta en la franquicia.",
+     "😈 Los 7 Grandes Demonios": "Lucemon (Orgullo), Leviamon (Envidia), Lilithmon (Lujuria), Barbamon (Avaricia), Beelzemon (Gula), Belphemon (Pereza) y Daemon (Ira): inspirados en los siete pecados capitales, representan el poder oscuro mas temido.",
+     "🗿 Los Titanes": "Grupo de poder ancestral de origen mitologico. Su definicion exacta varia entre fuentes (por ejemplo Titamon o las Olympos XII), asi que ajusta esta descripcion a lo que muestre el juego.",
+     "🌌 Susanoomon": "Fusion de los diez Guerreros Legendarios (Digimon Frontier) y una de las existencias mas poderosas de toda la franquicia, capaz de purificar la oscuridad.",
+    }
+    for title, text in H.items():
+        with st.expander(title, expanded=title.startswith("🖥️")):
+            st.write(text)
